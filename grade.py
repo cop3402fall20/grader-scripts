@@ -1,0 +1,273 @@
+import os
+import re
+import csv
+import sys
+import pytz
+import shutil
+import zipfile
+import subprocess
+from git import Repo, Git
+from datetime import datetime, timedelta
+from testToyCompiler import buildAndTest
+from distutils.dir_util import copy_tree
+
+
+# Unzips the submissions.zip file downloaded from HW1 and parses through the
+# html files to get the students' ID and repository names. Returns a list of
+# submissions containing IDs, repo names, intial grade.
+def get_submissions():
+
+    url = "https://github.com/cop3402fall20/toy-compiler-"
+    temp_dir = "./tmp/"
+    
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+
+    os.mkdir(temp_dir)
+
+    submissions = []
+    with zipfile.ZipFile("./submissions.zip", "r") as ref:
+        ref.extractall(temp_dir)
+
+    for filename in os.listdir(temp_dir):
+        with open(temp_dir + "/" + filename, "r") as f:
+            data = f.read()
+                
+            student_id = re.search("\d+", filename).group(0)
+            
+            try:
+                repository = re.search("url=" + url + "(.*)\"", data).group(1)
+                
+                if ".git" in repository:
+                    repository = repository.split(".")[0]
+                if "/" in repository:
+                    repository = repository.split("/")[0]
+
+                submissions.append(["", student_id, repository, 0, ""])
+
+            except AttributeError:
+                repository = re.search("url=(.*)\"", data).group(1)
+                output = "invalid github link: " + repository
+                submissions.append(["", student_id, None, 0, output])
+    
+    shutil.rmtree(temp_dir)
+    
+    return submissions
+
+# Either clones the students repo or fetches the lastest data and checks out
+# the specific project tag.
+def pull_checkout(submissions, project):
+
+    student_repos = "./student_repos/"
+    checkout_pt = 0
+
+    if os.path.isdir(student_repos):
+        created_dir = False
+    else:
+        os.mkdir(student_repos)
+        created_dir = True
+
+    for i, repository in enumerate(submissions):
+        if repository[2] is not None:
+            path = student_repos + repository[2]
+
+            if created_dir:
+                if make_repo(path, repository):
+                    repository[2] = None
+                    continue
+                print_update("Cloning", i, len(submissions),repository[2])
+            else:
+                if os.path.isdir(path):
+                    for remote in Repo(path).remotes:
+                        remote.fetch()
+                        print_update("Fetching", i,
+                                len(submissions), repository[2])
+                else:
+                    if make_repo(path, repository):
+                        repository[2] = None
+                        continue
+                    print_update("Cloning", i, len(submissions),repository[2])
+            print(Repo(path).tags)
+            # if project in Repo(path).tags:
+            #     Git(path).checkout(project)
+            repository[3] = checkout_pt
+
+            # else:
+            #     repository[4] = project + " not found."
+
+    
+# Creates student directories and clones the remote repositories
+def make_repo(path, repository):
+    
+    url = "git@github.com:cop3402fall20/toy-compiler-"
+    
+    try:
+        os.mkdir(path)
+    except OSError:
+        repostitory[4] = "invalid github link: " + repository[1]
+        return True
+    
+    git = url + repository[2] + ".git"
+    Repo.clone_from(git, path)
+
+    return False
+                   
+# Runs the modular test case script for each student and updates the grades
+# accordingly
+def run_test_cases(submissions, project):
+    print("running test cases")
+    make_pt = 1
+    test_pt = 10
+
+    for i, repository in enumerate(submissions):
+        print(f"int repo {repository}" )
+        if repository[3] == 0:
+            
+            path = "/vagrant/grader-scripts/student_repos/" + repository[2]
+            subprocess.run(['make', 'clean'], cwd = path,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            print_update("Grading", i, len(submissions),repository[2])
+
+            realtestcasepath = "/vagrant/grader-project/tests/" # + project
+            testCasePath = os.path.join(realtestcasepath, repository[2])
+            print(f"testCasePath {testCasePath} realpath")
+            copy_tree(realtestcasepath, testCasePath)
+            cwd = os.getcwd()
+            os.chdir(path)
+            total, value, repository[4] = buildAndTest(path, testCasePath)
+            os.chdir(cwd)
+            shutil.rmtree(testCasePath) 
+            
+            if total is not None:
+                repository[3] += value * test_pt
+                date = Repo(path).head.commit.committed_date
+                late = calculate_late(date, int(project[-1]))
+                if late > 0:
+                    print(f"Late point deduction of {late}")
+                    repository[4] += "\n-" + str(late) + " late point deduction."
+                    repository[3] -= late 
+                    
+        est = pytz.timezone('US/Eastern')
+        repository[4] += "\nGraded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
+
+
+# Calculates the late points based on due dates on syllabus.
+def calculate_late(date, project):
+    
+    est = pytz.timezone('US/Eastern')
+
+    due = [datetime(2020, 9, 25, 11, 59, 59, 0),
+            datetime(2020, 10, 10, 19, 30, 0, 0),
+            datetime(2020, 10, 29, 19, 30, 0, 0),
+            datetime(2020, 11, 14, 19, 30, 0, 0),
+            datetime(2019, 12, 5, 19, 30, 0, 0)]
+
+    if date - est.localize(due[project]).timestamp() <= 0:
+        return 0
+    
+    late = datetime.fromtimestamp(est.localize(due[project]).timestamp()) + timedelta(days=14)
+
+    if date - late.timestamp() <= 0:
+        return 1
+
+    return 2
+
+
+# Creates the file import for webcourses with updated student grades.
+def update_grades(submissions, project):
+    print("update grades")
+    #project = "Project " + project[-1]
+    no_submission = []
+    comments = []
+
+    # Creates the grade import csv for all students
+    with open("students.csv", "r") as f, open("import.csv", "w") as t:
+        reader = csv.DictReader(f)
+        res = project in reader.fieldnames
+        print(f"project: {project} is proj in s: {res}")
+        test = [s for s in reader.fieldnames if project in s]
+        print(test)
+        project = [s for s in reader.fieldnames if project in s][0]
+
+        headers = ["Student", "ID", "SIS User ID", 
+                    "SIS Login ID", "Section", project]
+
+        writer = csv.DictWriter(t, fieldnames=headers)
+        writer.writeheader()
+
+        for row in reader:
+            exist = False
+            for student in submissions:
+                if row["ID"] in student:
+                    exist = True
+                    if student[3] > 0:
+                        if row[project] == "":
+                            row[project] = student[3]
+                            r = {}
+                            for e in headers:
+                                r.update({e:row[e]})
+                            student[0] = row["Student"]
+                            writer.writerow(r)
+                            comments.append(student)
+                            break
+
+                        if float(row[project]) <= student[3]:
+                            row[project] = student[3]
+                            r = {}
+                            for e in headers:
+                                r.update({e:row[e]})
+                            student[0] = row["Student"]
+                            writer.writerow(r)
+                            comments.append(student)
+                            break
+                
+            if not exist:
+                comments.append([row["Student"], row["ID"], 
+                        "None", 0, "No submission."])
+                row[project] = 0
+                r = {}
+                for e in headers:
+                    r.update({e:row[e]})
+                writer.writerow(r)
+
+    # Sneaky sorting by last name
+    s = [i[0].split()[1:2] + i for i in comments if i[0] is not ""]
+    s.sort(key=lambda x: x[0])
+    s = [i[1:] for i in s]
+
+    # Creates a csv for assignment comments
+    with open("comments.csv", "w") as f:
+        headers = ["Student", "ID", "Grade", "Comment"]
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        writer.writerows(s)
+
+# Prints updates for the grading script
+def print_update(update, i, l, repository):
+    print(update + " " + str(i+1) + "/" + str(l) + ": " + repository)
+
+if __name__ == "__main__":
+
+    if len(sys.argv) == 1:
+        print("Please provide a project tag.")
+        sys.exit()
+
+    project = sys.argv[1]
+
+    submissions = get_submissions()
+
+    print(submissions)
+
+    pull_checkout(submissions, project)
+
+    run_test_cases(submissions, project)
+
+    update_grades(submissions, project)
+
+    # file clean up for incorrect makefile
+    for f in os.listdir("./"):
+        if f.endswith(".ll"):
+            os.remove("./" + f)
+
+    print("Grading complete!")
