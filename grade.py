@@ -48,7 +48,7 @@ def get_submissions():
             except AttributeError:
                 repository = re.search("url=(.*)\"", data).group(1)
                 output = "invalid github link: " + repository
-                submissions.append(["", student_id, None, 0, output])
+                submissions.append(["", student_id, None, -1, output])
     
     shutil.rmtree(temp_dir)
     
@@ -87,7 +87,7 @@ def pull_checkout(submissions, project):
                         repository[2] = None
                         continue
                     print_update("Cloning", i, len(submissions),repository[2])
-            print(Repo(path).tags)
+            # print(Repo(path).tags)
             # if project in Repo(path).tags:
             #     Git(path).checkout(project)
             repository[3] = checkout_pt
@@ -120,7 +120,8 @@ def run_test_cases(submissions, project):
     test_pt = 10
 
     for i, repository in enumerate(submissions):
-        print(f"int repo {repository}" )
+        if repository[3] != 0:
+            print("skipping")
         if repository[3] == 0:
             
             path = "/vagrant/grader-scripts/student_repos/" + repository[2]
@@ -142,14 +143,17 @@ def run_test_cases(submissions, project):
             if total is not None:
                 repository[3] += value * test_pt
                 date = Repo(path).head.commit.committed_date
+                
                 late = calculate_late(date, int(project[-1]))
                 if late > 0:
                     print(f"Late point deduction of {late}")
+                    est = pytz.timezone('US/Eastern')
                     repository[4] += "\n-" + str(late) + " late point deduction."
                     repository[3] -= late 
                     
         est = pytz.timezone('US/Eastern')
-        repository[4] += "\nGraded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
+        
+        repository[4] += "Using commit from " + str(date) +"\nGraded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
 
 
 # Calculates the late points based on due dates on syllabus.
@@ -157,19 +161,20 @@ def calculate_late(date, project):
     
     est = pytz.timezone('US/Eastern')
 
-    due = [datetime(2020, 9, 25, 11, 59, 59, 0),
+    due = [datetime(2020, 9, 25,23 , 59, 59, 0),
             datetime(2020, 10, 10, 19, 30, 0, 0),
             datetime(2020, 10, 29, 19, 30, 0, 0),
             datetime(2020, 11, 14, 19, 30, 0, 0),
             datetime(2019, 12, 5, 19, 30, 0, 0)]
 
     if date - est.localize(due[project]).timestamp() <= 0:
+
         return 0
     
     late = datetime.fromtimestamp(est.localize(due[project]).timestamp()) + timedelta(days=14)
 
     if date - late.timestamp() <= 0:
-        return 1
+        return 5
 
     return 2
 
@@ -185,9 +190,9 @@ def update_grades(submissions, project):
     with open("students.csv", "r") as f, open("import.csv", "w") as t:
         reader = csv.DictReader(f)
         res = project in reader.fieldnames
-        print(f"project: {project} is proj in s: {res}")
-        test = [s for s in reader.fieldnames if project in s]
-        print(test)
+        # print(f"project: {project} is proj in s: {res}")
+        # test = [s for s in reader.fieldnames if project in s]
+        # print(test)
         project = [s for s in reader.fieldnames if project in s][0]
 
         headers = ["Student", "ID", "SIS User ID", 
@@ -201,7 +206,7 @@ def update_grades(submissions, project):
             for student in submissions:
                 if row["ID"] in student:
                     exist = True
-                    if student[3] > 0:
+                    if student[3] >= 0:
                         if row[project] == "":
                             row[project] = student[3]
                             r = {}
@@ -257,13 +262,16 @@ if __name__ == "__main__":
 
     submissions = get_submissions()
 
-    print(submissions)
 
     pull_checkout(submissions, project)
 
     run_test_cases(submissions, project)
 
     update_grades(submissions, project)
+
+    badsubmissions = [s for s in submissions if s[3] == -1]
+    for b in badsubmissions:
+        print(b)
 
     # file clean up for incorrect makefile
     for f in os.listdir("./"):
