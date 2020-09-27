@@ -43,7 +43,7 @@ def get_submissions():
                 if "/" in repository:
                     repository = repository.split("/")[0]
 
-                submissions.append(["", student_id, repository, 0, ""])
+                submissions.append(["", student_id, repository, 2, ""])
 
             except AttributeError:
                 repository = re.search("url=(.*)\"", data).group(1)
@@ -90,7 +90,6 @@ def pull_checkout(submissions, project):
             # print(Repo(path).tags)
             # if project in Repo(path).tags:
             #     Git(path).checkout(project)
-            repository[3] = checkout_pt
 
             # else:
             #     repository[4] = project + " not found."
@@ -116,13 +115,11 @@ def make_repo(path, repository):
 # accordingly
 def run_test_cases(submissions, project):
     print("running test cases")
-    make_pt = 1
-    test_pt = 10
-
+    print(submissions)
     for i, repository in enumerate(submissions):
-        if repository[3] != 0:
+        if repository[3]  < 2:
             print("skipping")
-        if repository[3] == 0:
+        else:
             
             path = "/vagrant/grader-scripts/student_repos/" + repository[2]
             subprocess.run(['make', 'clean'], cwd = path,
@@ -136,24 +133,28 @@ def run_test_cases(submissions, project):
             copy_tree(realtestcasepath, testCasePath)
             cwd = os.getcwd()
             os.chdir(path)
-            total, value, repository[4] = buildAndTest(path, testCasePath)
+            points,repository[4] = buildAndTest(path, testCasePath)
             os.chdir(cwd)
             shutil.rmtree(testCasePath) 
             
-            if total is not None:
-                repository[3] += value * test_pt
-                date = Repo(path).head.commit.committed_date
+            if points is not None:
+                repository[3] += points
+                try:
+                    date = Repo(path).head.commit.committed_date
                 
-                late = calculate_late(date, int(project[-1]))
-                if late > 0:
-                    print(f"Late point deduction of {late}")
-                    est = pytz.timezone('US/Eastern')
-                    repository[4] += "\n-" + str(late) + " late point deduction."
-                    repository[3] -= late 
+                    late = calculate_late(date, int(project[-1]))
+                    if late > 0:
+                        print(f"Late point deduction of {late}")
+                        est = pytz.timezone('US/Eastern')
+                        repository[4] += "\n-" + str(late) + " late point deduction."
+                        repository[3] -= late 
+                except ValueError:
+                    # repo may be empty
+                    pass
                     
         est = pytz.timezone('US/Eastern')
         
-        repository[4] += "Using commit from " + str(date) +"\nGraded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
+        ## repository[4] += "Using commit from " + str(date) +"\nGraded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
 
 
 # Calculates the late points based on due dates on syllabus.

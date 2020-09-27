@@ -38,6 +38,8 @@ def run_cmd(cmd, exit_nonzero=False):
 
 def buildAndTest(submissionpath, sourceTestPath):
     
+
+    points = 0
     script_path = os.path.dirname(os.path.realpath(__file__))
 
     # create temporary directory so that previous students' results will not affect subsequent tests
@@ -62,7 +64,6 @@ def buildAndTest(submissionpath, sourceTestPath):
     if os.path.exists(submissionpath + "/toy"):
         os.remove(submissionpath + "/toy")
     print("# building your toy compiler")
-    print("make")
     out = subprocess.run(['make'], cwd = submissionpath,
             stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL)
 
@@ -71,11 +72,11 @@ def buildAndTest(submissionpath, sourceTestPath):
     if out.returncode != 0:
         output += "# ERROR running make failed."  
         print(output + " Do you have a Makefile?") # can't even compile the compiler 
-        return None, None, output
-        
+        return 0, output 
+    else:
+        points += 3 # 2 points for building    
     toyCompiler = os.path.join(submissionpath, "toy")
-    totalCount = 1
-    errorCount = 0
+    
     
     # simpleC compilers lives so lets go through every test case now
     for case in testCases:
@@ -91,16 +92,14 @@ def buildAndTest(submissionpath, sourceTestPath):
             return_code, stdout, stderr = run_cmd(cmd,False)
             if len(str(stdout,sys.stdout.encoding)) == 0:
                 print("Success")
+                points += 5 ##  5 points for passing the test case
             else:
-                print("diff failed")
+                print("Diff failed")
                 output += f"output from {cmd}\n"
                 output +="STDOUT: " + str(stdout,sys.stdout.encoding) + '\n'
                 output +="STDERR: " + str(stderr,sys.stdout.encoding) + '\n'
-                errorCount += 1
 
-    value = totalCount - errorCount
-    print(f"Total passed - errors: {value}")
-    return totalCount, value, output 
+    return points, output 
 
 def error(app, f):
 
