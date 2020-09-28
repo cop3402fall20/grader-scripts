@@ -46,7 +46,7 @@ def buildAndTest(submissionpath, sourceTestPath):
     testCasePath = sourceTestPath
 
     testCases = glob.glob(os.path.join(testCasePath, "*.toy"))
-    print(f"testCases {testCases}")
+    #print(f"testCases {testCases}")
 
     for i in glob.glob(os.path.join(submissionpath, "*.o")):
         if os.path.exists(i):
@@ -70,7 +70,7 @@ def buildAndTest(submissionpath, sourceTestPath):
     output = ""
     err = ""
     if out.returncode != 0:
-        output += "# ERROR running make failed."  
+        output += "make failed."  
         print(output + " Do you have a Makefile?") # can't even compile the compiler 
         return 0, output 
     else:
@@ -91,13 +91,13 @@ def buildAndTest(submissionpath, sourceTestPath):
             cmd = "diff -w -B student.s /vagrant/grader-project/tests/1.s"
             return_code, stdout, stderr = run_cmd(cmd,False)
             if len(str(stdout,sys.stdout.encoding)) == 0:
-                print("Success")
+                output += "::Passed diff!"
                 points += 5 ##  5 points for passing the test case
             else:
-                print("Diff failed")
-                output += f"output from {cmd}\n"
-                output +="STDOUT: " + str(stdout,sys.stdout.encoding) + '\n'
-                output +="STDERR: " + str(stderr,sys.stdout.encoding) + '\n'
+                cmd += " | wc -l"
+                return_code, stdout, stderr = run_cmd(cmd,False)
+                word_count = str(stdout, sys.stdout.encoding)
+                output += f"::Diff failed with {word_count.strip()} lines in diff output"
 
     return points, output 
 

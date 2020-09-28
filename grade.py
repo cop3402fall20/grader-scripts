@@ -12,6 +12,16 @@ from testToyCompiler import buildAndTest
 from distutils.dir_util import copy_tree
 
 
+
+def write_out(fname, strings):
+    outF = open(fname, "w")
+    for line in strings:
+        # write line to output file
+        outF.write(line)
+        outF.write("\n")
+        outF.close()
+
+
 # Unzips the submissions.zip file downloaded from HW1 and parses through the
 # html files to get the students' ID and repository names. Returns a list of
 # submissions containing IDs, repo names, intial grade.
@@ -48,6 +58,7 @@ def get_submissions():
             except AttributeError:
                 repository = re.search("url=(.*)\"", data).group(1)
                 output = "invalid github link: " + repository
+                print(output)
                 submissions.append(["", student_id, None, -1, output])
     
     shutil.rmtree(temp_dir)
@@ -57,9 +68,10 @@ def get_submissions():
 # Either clones the students repo or fetches the lastest data and checks out
 # the specific project tag.
 def pull_checkout(submissions, project):
-
+    not_found = list()
     student_repos = "./student_repos/"
     checkout_pt = 0
+    failed_make_repo = list()
 
     if os.path.isdir(student_repos):
         created_dir = False
@@ -74,6 +86,7 @@ def pull_checkout(submissions, project):
             if created_dir:
                 if make_repo(path, repository):
                     repository[2] = None
+                    failed_make_repo.append(str(repository))
                     continue
                 print_update("Cloning", i, len(submissions),repository[2])
             else:
@@ -85,14 +98,19 @@ def pull_checkout(submissions, project):
                 else:
                     if make_repo(path, repository):
                         repository[2] = None
+                        failed_make_repo.append(str(repository))
                         continue
                     print_update("Cloning", i, len(submissions),repository[2])
             # print(Repo(path).tags)
             # if project in Repo(path).tags:
             #     Git(path).checkout(project)
 
-            # else:
-            #     repository[4] = project + " not found."
+        else:
+            not_found.append(project + " not found.")
+            repository[4] = project + " not found."
+    write_out("notfound", not_found)
+    write_out("failedmake", failed_make_repo)
+            
 
     
 # Creates student directories and clones the remote repositories
@@ -118,7 +136,7 @@ def run_test_cases(submissions, project):
     print(submissions)
     for i, repository in enumerate(submissions):
         if repository[3]  < 2:
-            print("skipping")
+            print("skipping" + str(repository))
         else:
             
             path = "/vagrant/grader-scripts/student_repos/" + repository[2]
@@ -133,6 +151,7 @@ def run_test_cases(submissions, project):
             copy_tree(realtestcasepath, testCasePath)
             cwd = os.getcwd()
             os.chdir(path)
+            print(str(repository))
             points,repository[4] = buildAndTest(path, testCasePath)
             os.chdir(cwd)
             shutil.rmtree(testCasePath) 
@@ -146,15 +165,15 @@ def run_test_cases(submissions, project):
                     if late > 0:
                         print(f"Late point deduction of {late}")
                         est = pytz.timezone('US/Eastern')
-                        repository[4] += "\n-" + str(late) + " late point deduction."
-                        repository[3] -= late 
+                        repository[4] += f"::late point deduction:{repository[3] * 0.5}"
+                        repository[3] *= 0.5
                 except ValueError:
-                    # repo may be empty
+                    repository[4] += f"repo has no commit history"
                     pass
                     
         est = pytz.timezone('US/Eastern')
         
-        ## repository[4] += "Using commit from " + str(date) +"\nGraded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
+        repository[4] += "::Graded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
 
 
 # Calculates the late points based on due dates on syllabus.
