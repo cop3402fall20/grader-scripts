@@ -27,7 +27,7 @@ def write_out(fname, strings):
 # submissions containing IDs, repo names, intial grade.
 def get_submissions():
 
-    url = "https://github.com/cop3402fall20/toy-compiler-"
+    url = "https://github.com/cop3402fall20/"
     temp_dir = "./tmp/"
     
     if os.path.exists(temp_dir):
@@ -116,7 +116,7 @@ def pull_checkout(submissions, project):
 # Creates student directories and clones the remote repositories
 def make_repo(path, repository):
     
-    url = "git@github.com:cop3402fall20/toy-compiler-"
+    url = "git@github.com:cop3402fall20/"
     
     try:
         os.mkdir(path)
