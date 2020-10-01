@@ -213,7 +213,7 @@ def update_grades(submissions, project):
         # print(f"project: {project} is proj in s: {res}")
         # test = [s for s in reader.fieldnames if project in s]
         # print(test)
-        project = [s for s in reader.fieldnames if project in s][0]
+        project = [s for s in reader.fieldnames if "project" in s][0]
 
         headers = ["Student", "ID", "SIS User ID", 
                     "SIS Login ID", "Section", project]
