@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import sys
 import glob 
@@ -36,7 +38,6 @@ def buildAndTest(submissionpath, sourceTestPath):
 
     if os.path.exists(submissionpath + "/simplec"):
         os.remove(submissionpath + "/simplec")
-    print("# building your simplec compiler")
     out = subprocess.run(['make'], cwd = submissionpath,
             stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL)
 
@@ -47,28 +48,30 @@ def buildAndTest(submissionpath, sourceTestPath):
         print(output + " Do you have a Makefile?") # can't even compile the compiler 
         return 0, output 
     else:
-        print("Build succeeded")
+        print("Build succeeded!")
         points += build_points # points to build. tentative   
     
     # simpleC compilers lives so lets go through every test case now
     for case in testCases:
         base_name = os.path.basename(case)
+        ground_truth = case.replace(".simplec", ".ast")
+        output_file = base_name.replace(".simplec", ".out")
+        diff_file = base_name.replace(".simplec", ".diff")
         print(f"Testing {base_name}:", end=" ")
 
         with cd(submissionpath):
-            ground_truth = case.replace(".simplec", ".ast")
-            cmd = f"cat \"{case}\" | ./simplec > {base_name}.out"
+            cmd = f"cat \"{case}\" | ./simplec > {output_file}"
             #print(f"Running command: {cmd}")
             return_code, stdout_, stderr_ = run_cmd(cmd)
-            cmd = f"diff -w -B \"{ground_truth}\" {base_name}.out"
+            cmd = f"diff -w -B \"{ground_truth}\" {output_file}"
             #print(f"Running command: {cmd}")
             return_code, stdout_, stderr_ = run_cmd(cmd,False)
             if return_code == 0 and len(stdout_) == 0:
                 print("Success!")
                 points += test_case_points
             if return_code == 1 and len(stdout_) > 0:
-                print(f"Failure. See {base_name}.diff for diff and {base_name}.out for output.")
-                diff_out = open(f"{base_name}.diff", "w")
+                print(f"Failure. See {diff_file} for diff and {output_file} for output.")
+                diff_out = open(diff_file, "w")
                 diff_out.write(stdout_)
                 diff_out.close()
 
