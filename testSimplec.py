@@ -6,8 +6,8 @@ import subprocess
 from lib import cd, Submission, run_cmd
 
 source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
-test_case_points = 2
-build_points = 0 #points for building. tentative
+test_case_points = 0.875
+build_points = 1 #points for building. tentative
 
 
 def buildAndTest(submissionpath, sourceTestPath):
@@ -43,11 +43,12 @@ def buildAndTest(submissionpath, sourceTestPath):
     output = ""
     err = ""
     if out.returncode != 0:
-        output += "Make failed."  
+        output += "Make failed. Skipping test cases and exiting.\n"  
         print(output + " Do you have a Makefile?") # can't even compile the compiler 
         return 0, output 
     else:
         print("Build succeeded")
+        output += "Build succeeded\n"
         points += build_points # points to build. tentative   
     
     # simpleC compilers lives so lets go through every test case now
@@ -65,13 +66,18 @@ def buildAndTest(submissionpath, sourceTestPath):
             return_code, stdout_, stderr_ = run_cmd(cmd,False)
             if return_code == 0 and len(stdout_) == 0:
                 print("Success!")
+                output += f"{base_name}: pass\n"
                 points += test_case_points
             if return_code == 1 and len(stdout_) > 0:
                 print(f"Failure. See {base_name}.diff for diff and {base_name}.out for output.")
+                output += f"{base_name}: fail. See {base_name}.diff for diff and {base_name}.out for output.\n"
                 cmd = f"diff -w -B \"{ground_truth}\" {base_name}.out > {base_name}.diff"
+                return_code, stdout_, stderr_ = run_cmd(cmd)
             if return_code > 1:
                 print(f"diff exited with an unknown return code. This shouldn't happen. Here is the stderr: {stderr_}")
-    print(f"{int((points - build_points) / test_case_points)} / {len(testCases)} test casing passing. ")
+    msg = f"{int((points - build_points) / test_case_points)} / {len(testCases)} test casing passing."
+    print(msg)
+    output += msg
     return points, output 
 
 def error(app, f):
@@ -91,3 +97,4 @@ if __name__ == "__main__":
 
 
     buildAndTest(submissionDirectory, sourceTestPath)
+    os.remove()

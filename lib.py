@@ -14,7 +14,7 @@ class cd:
     def __exit__(self, etype, value, traceback):
         os.chdir(self.savedPath)
 
-def run_cmd(cmd, exit_nonzero=False):
+def run_cmd(cmd, exit_nonzero=False,timeout=2):
     """Helper function to spawn a subproces. If exit_nonzero is True, a nonzero return code results in program termination.
     """
     sp = subprocess.Popen(
@@ -22,7 +22,7 @@ def run_cmd(cmd, exit_nonzero=False):
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE)
-    stdout_, stderr_ = sp.communicate(timeout=1)
+    stdout_, stderr_ = sp.communicate(timeout=timeout)
     return_code = sp.returncode
     if return_code !=0 and exit_nonzero:
         print(f"Error running: {cmd}")

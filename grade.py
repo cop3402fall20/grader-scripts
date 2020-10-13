@@ -11,6 +11,7 @@ from git import Repo, Git
 from datetime import datetime, timedelta
 from testSimplec import buildAndTest
 from distutils.dir_util import copy_tree
+from lib import cd, Submission, run_cmd
 
 
 source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
@@ -89,7 +90,17 @@ def run_test_cases(submissions, project):
             print_update("Grading", i, len(submissions), submission.repo)
 
             test_case_path = os.path.join(source_path, "tests", project)
-            points,submission.grade = buildAndTest(path, test_case_path)
+            points,output = buildAndTest(path, test_case_path)
+            f = open(os.path.join(path,"log.txt"), "w")
+            f.write(output)
+            f.close()
+            cmd = f"cd {path}; rm artifacts.zip; zip artifacts.zip *.out *.txt *.diff"
+            return_code, stdout_, stderr_ = run_cmd(cmd,False,10)
+            print(stderr_)
+            print(stdout_)
+            print(return_code)
+
+
             
             if points is not None:
                 submission.grade = points
@@ -112,8 +123,76 @@ def run_test_cases(submissions, project):
         submission.status += "::Graded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
 
 
+# Creates the file import for webcourses with updated student grades.
+def update_grades(submissions, project):
+    print("update grades")
+    #project = "Project " + project[-1]
+    no_submission = []
+    comments = []
 
-# Either clones the students repo or fetches the lastest data and checks out
+    # Creates the grade import csv for all students
+    with open("students.csv", "r") as f, open("import.csv", "w") as t:
+        reader = csv.DictReader(f)
+        res = project in reader.fieldnames
+        # test = [s for s in reader.fieldnames if project in s]
+        # print(test)
+        project = [s for s in reader.fieldnames if project in s][0]
+
+        headers = ["Student", "ID", "SIS User ID", 
+                    "SIS Login ID", "Section", project]
+
+        writer = csv.DictWriter(t, fieldnames=headers)
+        writer.writeheader()
+
+        for row in reader:
+            exist = False
+            for submission in submissions:
+                if row["ID"] in submission.id:
+                    exist = True
+                    if row[project] == "":
+                        row[project] = submission.grade
+                        r = {}
+                        for e in headers:
+                            r.update({e:row[e]})
+                        writer.writerow(r)
+                        comments.append(submission)
+                        break
+                    if float(row[project]) <= submission.grade:
+                        row[project] = submission.grade
+                        r = {}
+                        for e in headers:
+                            r.update({e:row[e]})
+                        writer.writerow(r)
+                        comments.append(submission)
+                        break
+                
+            if not exist:
+                comments.append([row["Student"], row["ID"], 
+                        "None", 0, "No submission."])
+                row[project] = 0
+                r = {}
+                for e in headers:
+                    r.update({e:row[e]})
+                writer.writerow(r)
+
+    # Sneaky sorting by last name
+    # s = [i[0].split()[1:2] + i for i in comments if i[0] is not ""]
+    # s.sort(key=lambda x: x[0])
+    # s = [i[1:] for i in s]
+    rows = [[s.name, s.id, s.grade, s.status] for s in submissions]
+    # Creates a csv for assignment comments
+    with open("comments.csv", "w") as f:
+        headers = ["Student", "ID", "Grade", "Comment"]
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        writer.writerows(rows)
+
+# Prints updates for the grading script
+def print_update(update, i, l, repository):
+    print(update + " " + str(i+1) + "/" + str(l) + ": " + repository)
+
+
+# Either clones the students repo or fetches the latest data and checks out
 # the specific project tag.
 def pull_checkout(submissions, project):
     not_found = list()
@@ -185,6 +264,7 @@ if __name__ == "__main__":
     submissions = get_submissions()
     pull_checkout(submissions, project)
     run_test_cases(submissions, project)
+    update_grades(submissions, project)
 
 
 
