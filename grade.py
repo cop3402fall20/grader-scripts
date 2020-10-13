@@ -4,27 +4,23 @@ import csv
 import sys
 import pytz
 import shutil
+from lib import Submission
 import zipfile
 import subprocess
 from git import Repo, Git
 from datetime import datetime, timedelta
-from testToyCompiler import buildAndTest
+from testSimplec import buildAndTest
 from distutils.dir_util import copy_tree
 
 
-
-def write_out(fname, strings):
-    outF = open(fname, "w")
-    for line in strings:
-        # write line to output file
-        outF.write(line)
-        outF.write("\n")
-        outF.close()
+source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
 
 
-# Unzips the submissions.zip file downloaded from HW1 and parses through the
-# html files to get the students' ID and repository names. Returns a list of
-# submissions containing IDs, repo names, intial grade.
+def print_update(update, i, l, repository):
+    print(update + " " + str(i+1) + "/" + str(l) + ": " + repository)
+
+
+
 def get_submissions():
 
     url = "https://github.com/cop3402fall20/"
@@ -42,7 +38,7 @@ def get_submissions():
     for filename in os.listdir(temp_dir):
         with open(temp_dir + "/" + filename, "r") as f:
             data = f.read()
-                
+            name = re.search("(?<=\: )(.*?)(?=\<)", data).group(0)
             student_id = re.search("\d+", filename).group(0)
             
             try:
@@ -52,18 +48,70 @@ def get_submissions():
                     repository = repository.split(".")[0]
                 if "/" in repository:
                     repository = repository.split("/")[0]
-
-                submissions.append(["", student_id, repository, 2, ""])
+                current_submission = Submission(student_id, name, repository,"parsed",None, None)
+                submissions.append(current_submission)
 
             except AttributeError:
                 repository = re.search("url=(.*)\"", data).group(1)
-                output = "invalid github link: " + repository
-                print(output)
-                submissions.append(["", student_id, None, -1, output])
+                current_submission = Submission(student_id,name, repository,"Error Parsing Git Link",None, None)
+                submissions.append(current_submission)
     
     shutil.rmtree(temp_dir)
     
     return submissions
+
+# Creates student directories and clones the remote repositories
+def make_repo(path, submission):
+    
+    url = "git@github.com:cop3402fall20/"
+    
+    try:
+        os.mkdir(path)
+    except OSError:
+        submission.status  += "\ninvalid github link: " + submission.repo
+        return False
+    
+    git = url + submission.repo + ".git"
+    Repo.clone_from(git, path)
+
+    return True
+# Runs the modular test case script for each student and updates the grades
+# accordingly
+def run_test_cases(submissions, project):
+    print("Running test cases")
+    for i, submission in enumerate(submissions):
+        if submission.path is not None:
+        
+            path = os.path.join(source_path, "student_repos", submission.repo)
+            subprocess.run(['make', 'clean'], cwd = path,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            print_update("Grading", i, len(submissions), submission.repo)
+
+            test_case_path = os.path.join(source_path, "tests", project)
+            points,submission.grade = buildAndTest(path, test_case_path)
+            
+            if points is not None:
+                submission.grade = points
+                try:
+                    date = Repo(path).head.commit.committed_date
+                
+                    late = calculate_late(date, int(project[-1]))
+                    if late > 0:
+                        print(f"Late point deduction of {late}")
+                        est = pytz.timezone('US/Eastern')
+                        # repository[4] += f"::late point deduction:{repository[3] * 0.5}"
+                        # repository[3] *= 0.5
+                except ValueError:
+                    # repo may be empty
+                    # repository[4] += f"repo has no commit history"
+                    pass
+                    
+        est = pytz.timezone('US/Eastern')
+        
+        submission.status += "::Graded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
+
+
 
 # Either clones the students repo or fetches the lastest data and checks out
 # the specific project tag.
@@ -79,113 +127,46 @@ def pull_checkout(submissions, project):
         os.mkdir(student_repos)
         created_dir = True
 
-    for i, repository in enumerate(submissions):
-        if repository[2] is not None:
-            path = student_repos + repository[2]
+    for i, submission in enumerate(submissions):
+        if submission.repo is not None:
+            path = student_repos + submission.repo
 
-            if created_dir:
-                if make_repo(path, repository):
-                    repository[2] = None
-                    failed_make_repo.append(str(repository))
+            if created_dir:  ## new repo
+                if not make_repo(path, submission):
+                    submission.repo = None
+                    submission.status += "\nFailed Clone"
+                    failed_make_repo.append(str(submission))
+                    submission.path = path
                     continue
-                print_update("Cloning", i, len(submissions),repository[2])
+                print_update("Cloning", i, len(submissions),submission.repo)
             else:
-                if os.path.isdir(path):
-                    for remote in Repo(path).remotes:
-                        remote.fetch()
-                        print_update("Fetching", i,
-                                len(submissions), repository[2])
+                if os.path.isdir(path): # check if clone worked
+                    # for remote in Repo(path).remotes:
+                    #     remote.fetch()
+                    #     print_update("Fetching", i,
+                    #             len(submissions), submission.repo)
+                    submission.status += "\n Fetched"
+                    submission.path = path
                 else:
-                    if make_repo(path, repository):
-                        repository[2] = None
-                        failed_make_repo.append(str(repository))
+                    if not make_repo(path, submission):
+                        submission.repo = None
+                        failed_make_repo.append(str(submission))
                         continue
-                    print_update("Cloning", i, len(submissions),repository[2])
-            # print(Repo(path).tags)
-            # if project in Repo(path).tags:
-            #     Git(path).checkout(project)
-
+                    print_update("Cloning", i, len(submissions),submission.repo)
         else:
             not_found.append(project + " not found.")
-            repository[4] = project + " not found."
-    write_out("notfound", not_found)
-    write_out("failedmake", failed_make_repo)
-            
-
-    
-# Creates student directories and clones the remote repositories
-def make_repo(path, repository):
-    
-    url = "git@github.com:cop3402fall20/"
-    
-    try:
-        os.mkdir(path)
-    except OSError:
-        repostitory[4] = "invalid github link: " + repository[1]
-        return True
-    
-    git = url + repository[2] + ".git"
-    Repo.clone_from(git, path)
-
-    return False
-                   
-# Runs the modular test case script for each student and updates the grades
-# accordingly
-def run_test_cases(submissions, project):
-    print("running test cases")
-    print(submissions)
-    for i, repository in enumerate(submissions):
-        if repository[3]  < 2:
-            print("skipping" + str(repository))
-        else:
-            
-            path = "/vagrant/grader-scripts/student_repos/" + repository[2]
-            subprocess.run(['make', 'clean'], cwd = path,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            print_update("Grading", i, len(submissions),repository[2])
-
-            realtestcasepath = "/vagrant/grader-project/tests/" # + project
-            testCasePath = os.path.join(realtestcasepath, repository[2])
-            print(f"testCasePath {testCasePath} realpath")
-            copy_tree(realtestcasepath, testCasePath)
-            cwd = os.getcwd()
-            os.chdir(path)
-            print(str(repository))
-            points,repository[4] = buildAndTest(path, testCasePath)
-            os.chdir(cwd)
-            shutil.rmtree(testCasePath) 
-            
-            if points is not None:
-                repository[3] += points
-                try:
-                    date = Repo(path).head.commit.committed_date
-                
-                    late = calculate_late(date, int(project[-1]))
-                    if late > 0:
-                        print(f"Late point deduction of {late}")
-                        est = pytz.timezone('US/Eastern')
-                        repository[4] += f"::late point deduction:{repository[3] * 0.5}"
-                        repository[3] *= 0.5
-                except ValueError:
-                    repository[4] += f"repo has no commit history"
-                    pass
-                    
-        est = pytz.timezone('US/Eastern')
-        
-        repository[4] += "::Graded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
+            submission.status += "\n repo not found"
 
 
-# Calculates the late points based on due dates on syllabus.
 def calculate_late(date, project):
     
     est = pytz.timezone('US/Eastern')
 
-    due = [datetime(2020, 9, 25,23 , 59, 59, 0),
-            datetime(2020, 10, 10, 19, 30, 0, 0),
-            datetime(2020, 10, 29, 19, 30, 0, 0),
-            datetime(2020, 11, 14, 19, 30, 0, 0),
-            datetime(2019, 12, 5, 19, 30, 0, 0)]
+    due = [datetime(2020, 10, 16,23 , 59, 0, 0),
+            datetime(2020, 10, 30, 23, 59, 0, 0),
+            datetime(2020, 11, 13, 23, 59, 0, 0),
+            datetime(2020, 12, 4, 23, 59, 0, 0),
+            datetime(2019, 12, 5, 23, 59, 0, 0)]
 
     if date - est.localize(due[project]).timestamp() <= 0:
 
@@ -198,104 +179,14 @@ def calculate_late(date, project):
 
     return 2
 
-
-# Creates the file import for webcourses with updated student grades.
-def update_grades(submissions, project):
-    print("update grades")
-    #project = "Project " + project[-1]
-    no_submission = []
-    comments = []
-
-    # Creates the grade import csv for all students
-    with open("students.csv", "r") as f, open("import.csv", "w") as t:
-        reader = csv.DictReader(f)
-        res = project in reader.fieldnames
-        # print(f"project: {project} is proj in s: {res}")
-        # test = [s for s in reader.fieldnames if project in s]
-        # print(test)
-        project = [s for s in reader.fieldnames if project in s][0]
-
-        headers = ["Student", "ID", "SIS User ID", 
-                    "SIS Login ID", "Section", project]
-
-        writer = csv.DictWriter(t, fieldnames=headers)
-        writer.writeheader()
-
-        for row in reader:
-            exist = False
-            for student in submissions:
-                if row["ID"] in student:
-                    exist = True
-                    if student[3] >= 0:
-                        if row[project] == "":
-                            row[project] = student[3]
-                            r = {}
-                            for e in headers:
-                                r.update({e:row[e]})
-                            student[0] = row["Student"]
-                            writer.writerow(r)
-                            comments.append(student)
-                            break
-
-                        if float(row[project]) <= student[3]:
-                            row[project] = student[3]
-                            r = {}
-                            for e in headers:
-                                r.update({e:row[e]})
-                            student[0] = row["Student"]
-                            writer.writerow(r)
-                            comments.append(student)
-                            break
-                
-            if not exist:
-                comments.append([row["Student"], row["ID"], 
-                        "None", 0, "No submission."])
-                row[project] = 0
-                r = {}
-                for e in headers:
-                    r.update({e:row[e]})
-                writer.writerow(r)
-
-    # Sneaky sorting by last name
-    s = [i[0].split()[1:2] + i for i in comments if i[0] is not ""]
-    s.sort(key=lambda x: x[0])
-    s = [i[1:] for i in s]
-
-    # Creates a csv for assignment comments
-    with open("comments.csv", "w") as f:
-        headers = ["Student", "ID", "Grade", "Comment"]
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        writer.writerows(s)
-
-# Prints updates for the grading script
-def print_update(update, i, l, repository):
-    print(update + " " + str(i+1) + "/" + str(l) + ": " + repository)
-
+            
 if __name__ == "__main__":
-
-    if len(sys.argv) == 1:
-        print("Please provide a project tag.")
-        sys.exit()
-
     project = sys.argv[1]
-
     submissions = get_submissions()
-
-
     pull_checkout(submissions, project)
-
     run_test_cases(submissions, project)
 
-    update_grades(submissions, project)
 
-    badsubmissions = [s for s in submissions if s[3] == -1]
-    for b in badsubmissions:
-        print(b)
 
-    # file clean up for incorrect makefile
-    for f in os.listdir("./"):
-        if f.endswith(".ll"):
-            os.remove("./" + f)
-
-    print("Grading complete!")
+    for s in submissions:
+        print(s)
