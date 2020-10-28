@@ -2,9 +2,9 @@
 
 import os
 import sys
-import glob 
-import shutil 
-import subprocess 
+import glob
+import shutil
+import subprocess
 from lib import cd, Submission, run_cmd
 
 source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
@@ -13,7 +13,6 @@ build_points = 0 # points for building. tentative
 
 
 def buildAndTest(submissionpath, sourceTestPath, no_remove):
-    
 
     points = 0
     script_path = os.path.dirname(os.path.realpath(__file__))
@@ -98,9 +97,8 @@ if __name__ == "__main__":
     no_remove = False
     try:
         temp = sys.argv[3]
+        no_remove = True
     except:
         pass
-    if(len(temp) > 0):
-        no_remove = True
 
     buildAndTest(submissionDirectory, sourceTestPath, no_remove)
