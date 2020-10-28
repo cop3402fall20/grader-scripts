@@ -2,9 +2,9 @@
 
 import os
 import sys
-import glob 
-import shutil 
-import subprocess 
+import glob
+import shutil
+import subprocess
 from lib import cd, Submission, run_cmd
 
 source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
@@ -12,8 +12,7 @@ test_case_points = 2
 build_points = 0 # points for building. tentative
 
 
-def buildAndTest(submissionpath, sourceTestPath):
-    
+def buildAndTest(submissionpath, sourceTestPath, no_remove):
 
     points = 0
     script_path = os.path.dirname(os.path.realpath(__file__))
@@ -23,10 +22,10 @@ def buildAndTest(submissionpath, sourceTestPath):
 
     testCases = glob.glob(os.path.join(testCasePath, "*.simplec"))
     #print(f"testCases {testCases}")
-
-    for i in glob.glob(os.path.join(submissionpath, "*.o")):
-        if os.path.exists(i):
-            os.remove(i)
+    if not no_remove:
+        for i in glob.glob(os.path.join(submissionpath, "*.o")):
+            if os.path.exists(i):
+                os.remove(i)
     progname = os.path.join(submissionpath, "simplec")
     if os.path.exists(progname):
         os.remove(progname)
@@ -95,6 +94,11 @@ if __name__ == "__main__":
         print("USAGE: path/to/your/repo path/to/the/tests")
         print("example: ./ ../syllabus/projects/tests/proj0/")
         sys.exit()
+    no_remove = False
+    try:
+        temp = sys.argv[3]
+        no_remove = True
+    except:
+        pass
 
-
-    buildAndTest(submissionDirectory, sourceTestPath)
+    buildAndTest(submissionDirectory, sourceTestPath, no_remove)
