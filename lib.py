@@ -35,16 +35,15 @@ def run_cmd(cmd, exit_nonzero=False,timeout=2):
 
 
 class Submission:
-    def __init__(self, id, name, repo, status, path, grade):
+    def __init__(self, id, name, repo, status, path, grade, assignmentid):
         self.id = id
         self.name = name
         self.repo = repo
         self.status = status
         self.path = path
         self.grade = grade
+        self.assignmentid = assignmentid
 
 
     def __str__(self):
-        
-        #print("hi")
         return f"{self.id} {self.name} {self.repo} {self.status} {self.grade} {self.path} "
