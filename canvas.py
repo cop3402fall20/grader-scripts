@@ -2,7 +2,7 @@
 from canvasapi import Canvas
 
 # Canvas API URL
-
+API_URL = "https://webcourses.ucf.edu/"
 
 # Initialize a new Canvas object
 

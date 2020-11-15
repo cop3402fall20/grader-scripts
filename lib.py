@@ -43,6 +43,7 @@ class Submission:
         self.path = path
         self.grade = grade
         self.assignmentid = assignmentid
+        self.tag_exists = False
 
 
     def __str__(self):

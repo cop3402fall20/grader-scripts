@@ -16,6 +16,8 @@ from canvas import comment_file
 import time
 
 
+
+
 source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
 
 
@@ -80,13 +82,18 @@ def make_repo(path, submission):
     return True
 # Runs the modular test case script for each student and updates the grades
 # accordingly
-def run_test_cases(submissions, project, API_KEY):
-   
+def run_test_cases(submissions, project, API_KEY, regrade=False):
+    count = 0
     print("Running test cases")
     print(submissions)
     time.sleep(0.33)
 
     for i, submission in enumerate(submissions):
+        
+        if regrade and not submission.tag_exists:
+             print(f"Skipping since submission tag for {project} does not exist")
+             continue
+        count += 1
         submission.grade = 0
         if submission.path is not None:
         
@@ -97,7 +104,7 @@ def run_test_cases(submissions, project, API_KEY):
             print_update("Grading", i, len(submissions), submission.repo)
 
             test_case_path = os.path.join(source_path, "tests", project)
-            points, output = buildAndTest(path, test_case_path)
+            points, output = buildAndTest(path, test_case_path, project)
             output = "Turned in +1 points\n" + output
             points += 1
             
@@ -109,11 +116,13 @@ def run_test_cases(submissions, project, API_KEY):
                 submission.grade = points
                 try:
                     date = Repo(path).head.commit.committed_date
+                    print(f"date: {date}")
+                    print(commit_hash)
                     commit_hash = str(Repo(path).head.commit)
                 
                     late = calculate_late(date, int(project[-1]))
                     if late > 0:
-                        print(f"Late point deduction of {late}")
+                        print(f"Late point deduction of {2}")
                         output += f"Late: -2 points\n"
                         submission.grade -= 2
                         
@@ -134,19 +143,21 @@ def run_test_cases(submissions, project, API_KEY):
             return_code, stdout_, stderr_ = run_cmd(cmd,False,10)
             if(return_code == 0):
                 archive_path = os.path.join(path, f"artifacts-{submission.id}.zip")
-                old_grade = get_old_grade(submission.id)
+                old_grade = get_old_grade(submission.id, project)
                 print(f"{old_grade},{submission.grade},{submission.id},kghj7")
-                #comment_file(API_KEY, int(submission.assignmentid),int(submission.id),archive_path)
+                if old_grade < submission.grade:
+                    print(f"commenting on {int(submission.id)} {old_grade},{submission.grade}")
+                    comment_file(API_KEY, int(submission.assignmentid),int(submission.id),archive_path)
             print(stderr_)
-            print(stdout_)
+            #print(stdout_)
             print(return_code)
         est = pytz.timezone('US/Eastern')
         
         submission.status += "::Graded at " + str(datetime.now(est).strftime('%I:%M %p %m/%d/%Y'))
-
+    print(f"Graded {count} submissions")
 
 # Creates the file import for webcourses with updated student grades.
-def update_grades(submissions, project):
+def update_grades(submissions, project, regrade=False):
     print("update grades")
     #project = "Project " + project[-1]
     no_submission = []
@@ -156,8 +167,8 @@ def update_grades(submissions, project):
     with open("students.csv", "r") as f, open("import.csv", "w") as t:
         reader = csv.DictReader(f)
         res = project in reader.fieldnames
-        # test = [s for s in reader.fieldnames if project in s]
         # print(test)
+        # print([s for s in reader.fieldnames ])
         project = [s for s in reader.fieldnames if project in s][0]
 
         headers = ["Student", "ID", "SIS User ID", 
@@ -165,12 +176,19 @@ def update_grades(submissions, project):
 
         writer = csv.DictWriter(t, fieldnames=headers)
         writer.writeheader()
-
+        count = 0
+        total = 0
+        skipped = 0
         for row in reader:
+            total += 1
             exist = False
             for submission in submissions:
-                if row["ID"] in submission.id:
+                # if we are regrading, skip the ones that checkout to the valid git tag
+                if regrade and  not submission.tag_exists: 
+                    continue
+                if row["ID"] in submission.id and len(row["ID"]) > 0:
                     exist = True
+                    count = count + 1
                     if row[project] == "":
                         row[project] = submission.grade
                         r = {}
@@ -187,8 +205,11 @@ def update_grades(submissions, project):
                         writer.writerow(r)
                         comments.append(submission)
                         break
+                    else:
+                        print(f"skipping {len(row['ID'])} {submission.grade} {submission.id} {row[project]} {row['ID']}")
+
                 
-            if not exist:
+            if not exist and not regrade:
                 comments.append([row["Student"], row["ID"], 
                         "None", 0, "No submission."])
                 row[project] = 0
@@ -244,7 +265,7 @@ def pull_checkout(submissions, project):
             else:
                 if os.path.isdir(path): # check if clone worked
                     for remote in Repo(path).remotes:
-                        remote.fetch()
+                        #remote.fetch()
                         print_update("Fetching", i,
                                 len(submissions), submission.repo)
                     submission.status += "\n Fetched"
@@ -257,19 +278,25 @@ def pull_checkout(submissions, project):
                     print_update("Cloning", i, len(submissions),submission.repo)
             if project in Repo(path).tags:
                 Git(path).checkout(project)
+                submission.tag_exists = True
         
         else:
             not_found.append(project + " not found.")
             submission.status += "\n repo not found"
 
 
-def get_old_grade(id):
-    f = open("import-old.csv","r")
-    for line in f:
-        if str(id) in line:
-             old_grade = line.split(",")[-1]
-             return float(old_grade)
-    return -1
+def get_old_grade(id, project):
+    # Creates the grade import csv for all students
+    with open("students.csv", "r") as f:
+        reader = csv.DictReader(f)
+        res = project in reader.fieldnames
+        # print(test)
+        # print([s for s in reader.fieldnames ])
+        project = [s for s in reader.fieldnames if project in s][0]
+        for row in reader:
+                if id in row["ID"]  and len(row["ID"]) > 0:
+                    return float(row[project])
+
 
 
 
@@ -280,31 +307,28 @@ def calculate_late(date, project):
 
     due = [datetime(2020, 10, 16,23 , 59, 0, 0),
             datetime(2020, 10, 30, 23, 59, 0, 0),
-            datetime(2020, 11, 13, 23, 59, 0, 0),
+            datetime(2020, 11, 20, 23, 59, 0, 0),
             datetime(2020, 12, 4, 23, 59, 0, 0),
             datetime(2019, 12, 5, 23, 59, 0, 0)]
 
-    if date - est.localize(due[project]).timestamp() <= 0:
+    if date - est.localize(due[project - 1]).timestamp() <= 0:
 
         return 0
-    
-    late = datetime.fromtimestamp(est.localize(due[project]).timestamp()) + timedelta(days=14)
-
-    if date - late.timestamp() <= 0:
-        return 5
-
     return 2
 
             
 if __name__ == "__main__":
+    regrade = False
     project = sys.argv[1]
     API_KEY = sys.argv[2]
+    try:
+        regrade = sys.argv[3]
+        regrade = True
+    except IndexError:
+        pass
+
     submissions = get_submissions(6846888)
     pull_checkout(submissions, project)
-    run_test_cases(submissions, project, API_KEY)
-    update_grades(submissions, project)
+    run_test_cases(submissions, project, API_KEY, regrade)
+    update_grades(submissions, project,regrade)
 
-
-
-    for s in submissions:
-        print(s)

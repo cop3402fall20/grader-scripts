@@ -4,16 +4,18 @@ import glob
 import shutil 
 import subprocess 
 from lib import cd, Submission, run_cmd
+from gradingSchema import gradingSchema
 
 source_path = os.path.dirname(os.path.abspath(__file__)) # /a/b/c/d/e
-public_points = 0.65
-private_points = 0.725
+# public_points = 0.65
+# private_points = 0.725
 build_points = 2 #points for building. tentative
 
 
-def buildAndTest(submissionpath, sourceTestPath):
+def buildAndTest(submissionpath, sourceTestPath, project):
     
-
+    public_points = gradingSchema[project]['public']
+    private_points = gradingSchema[project]['private']
     points = 0
     script_path = os.path.dirname(os.path.realpath(__file__))
 
