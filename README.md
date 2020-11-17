@@ -3,9 +3,12 @@
 
 ## Usage
 
-Run the following command: `python3 testSimplec.py path/to/your/repo path/to/the/tests`
+Run the following command: `python3 testSimplec.py path/to/your/repo path/to/the/tests keepBinaries compileAndCheckRetValue`
 
-Example: `python3 testSimplec.py /vagrant/simplec-compiler-josh /vagrant/tests-cases-public/proj1` 
+Example: `python3 testSimplec.py /vagrant/simplec-compiler-josh /vagrant/tests-cases-public/proj1 true true` 
+
+Set the second to last arg to true if you are using precompiled binaries from ealier projects
+Set the last arg to false for projects 1-2 and true for 3-4. It will compile your assembly output with gcc, run the binary, and check for the return value
 
 
 Sample output:
