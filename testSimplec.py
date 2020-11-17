@@ -12,8 +12,7 @@ test_case_points = 2
 build_points = 0 # points for building. tentative
 
 
-def buildAndTest(submissionpath, sourceTestPath, no_remove):
-
+def buildAndTest(submissionpath, sourceTestPath, no_remove, gcc=False):
     points = 0
     script_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -54,16 +53,35 @@ def buildAndTest(submissionpath, sourceTestPath, no_remove):
     for case in testCases:
         base_name = os.path.basename(case)
         ground_truth = case.replace(".simplec", ".ast")
+        if gcc:
+            ground_truth = case.replace(".simplec", ".out")
         output_file = base_name.replace(".simplec", ".out")
         diff_file = base_name.replace(".simplec", ".diff")
         print(f"Testing {base_name}:", end=" ")
 
         with cd(submissionpath):
-            cmd = f"cat \"{case}\" | ./simplec > {output_file}"
-            #print(f"Running command: {cmd}")
+            
+            if gcc:
+                cmd = f"cat \"{case}\" | ./simplec > {output_file}.s"
+                return_code, stdout_, stderr_ = run_cmd(cmd)
+                
+                cmd = f"gcc -o {output_file}.bin {output_file}.s "
+                return_code, stdout_, stderr_ = run_cmd(cmd)
+                
+                cmd = f"./{output_file}.bin"
+                return_code, stdout_, stderr_ = run_cmd(cmd)
+                
+                # open a (new) file to write
+                fp = open(output_file, "w")
+                fp.write(f"{return_code}")
+                fp.close()
+
+
+            else:
+                cmd = f"cat \"{case}\" | ./simplec > {output_file}"
             return_code, stdout_, stderr_ = run_cmd(cmd)
             cmd = f"diff -w -B \"{ground_truth}\" {output_file}"
-            #print(f"Running command: {cmd}")
+            print(f"Running command: {cmd}")
             return_code, stdout_, stderr_ = run_cmd(cmd,False)
             if return_code == 0 and len(stdout_) == 0:
                 print("Success!")
@@ -90,15 +108,12 @@ if __name__ == "__main__":
     try:
         submissionDirectory = os.path.abspath(sys.argv[1])
         sourceTestPath = os.path.abspath(sys.argv[2])
+        norm = sys.argv[3]
+        usegcc = sys.argv[4]
     except:
         print("USAGE: path/to/your/repo path/to/the/tests")
         print("example: ./ ../syllabus/projects/tests/proj0/")
         sys.exit()
-    no_remove = False
-    try:
-        temp = sys.argv[3]
-        no_remove = True
-    except:
-        pass
-
-    buildAndTest(submissionDirectory, sourceTestPath, no_remove)
+    no_remove = True if norm == "true" else False
+    gcc = True if usegcc == "true" else False
+    buildAndTest(submissionDirectory, sourceTestPath, no_remove, gcc)
